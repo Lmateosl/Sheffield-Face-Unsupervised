@@ -35,3 +35,6 @@ pca_outputs/
 build/
 dist/
 *.egg-info/
+
+# --- Figures ---
+figs/
