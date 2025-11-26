@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Nov 26 13:08:07 2025
+
+@author: ericemiowei
+"""
+
 import os
 import scipy.io
 import matplotlib.pyplot as plt
@@ -287,4 +295,78 @@ for i in range(num_examples):
 plt.suptitle("Autoencoder reconstructions: original (top) vs reconstructed (bottom)")
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.savefig(os.path.join(ae_dir, "autoencoder_reconstructions.png"))
+plt.show()
+
+
+# === Clustering on PCA embeddings: K-Means and Hierarchical ===
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.metrics import silhouette_score
+from scipy.cluster.hierarchy import dendrogram, linkage
+
+clustering_dir = os.path.join(os.path.dirname(__file__), "clustering_outputs")
+os.makedirs(clustering_dir, exist_ok=True)
+
+
+# K-MEANS CLUSTERING
+
+k = 20  # since dataset has 20 persons, sensible choice
+kmeans = KMeans(n_clusters=k, random_state=42)
+train_clusters_km = kmeans.fit_predict(X_train_pca)
+val_clusters_km = kmeans.predict(X_val_pca)
+test_clusters_km = kmeans.predict(X_test_pca)
+
+sil_km = silhouette_score(X_train_pca, train_clusters_km)
+print("\n[K-Means] Silhouette Score:", sil_km)
+
+with open(metrics_path, "a") as f:
+    f.write("=== K-Means Clustering ===\n")
+    f.write(f"Clusters: {k}\n")
+    f.write(f"Silhouette Score: {sil_km:.4f}\n\n")
+
+# Plot K-Means result in PCA first 2 dims
+plt.figure(figsize=(7,5))
+plt.scatter(X_train_pca[:,0], X_train_pca[:,1], c=train_clusters_km, s=10)
+plt.title("K-Means Clusters (PCA space)")
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.tight_layout()
+plt.savefig(os.path.join(clustering_dir, "kmeans_pca_clusters.png"))
+plt.show()
+
+
+# HIERARCHICAL CLUSTERING
+
+hier = AgglomerativeClustering(n_clusters=k, linkage='ward')
+train_clusters_hier = hier.fit_predict(X_train_pca)
+
+sil_hier = silhouette_score(X_train_pca, train_clusters_hier)
+print("[Hierarchical] Silhouette Score:", sil_hier)
+
+with open(metrics_path, "a") as f:
+    f.write("=== Hierarchical Clustering ===\n")
+    f.write(f"Clusters: {k}\n")
+    f.write(f"Silhouette Score: {sil_hier:.4f}\n\n")
+
+# Plot Hierarchical clusters in PCA 2D
+plt.figure(figsize=(7,5))
+plt.scatter(X_train_pca[:,0], X_train_pca[:,1], c=train_clusters_hier, s=10)
+plt.title("Hierarchical Clusters (PCA space)")
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.tight_layout()
+plt.savefig(os.path.join(clustering_dir, "hierarchical_pca_clusters.png"))
+plt.show()
+
+
+# Dendrogram (optional but useful)
+
+# Use a small subset to avoid huge dendrograms
+subset_size = min(150, X_train_pca.shape[0])
+Z = linkage(X_train_pca[:subset_size], method='ward')
+
+plt.figure(figsize=(12,4))
+dendrogram(Z, truncate_mode='level', p=6, leaf_rotation=90)
+plt.title("Hierarchical Dendrogram (subset of training set)")
+plt.tight_layout()
+plt.savefig(os.path.join(clustering_dir, "hierarchical_dendrogram.png"))
 plt.show()
