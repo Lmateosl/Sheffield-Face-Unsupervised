@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Nov 26 13:08:07 2025
-
-@author: ericemiowei
-"""
-
 import os
 import scipy.io
 import matplotlib.pyplot as plt
