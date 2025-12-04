@@ -132,7 +132,7 @@ plot_split_distribution(y_train, "Distribution in TRAIN")
 plot_split_distribution(y_val, "Distribution in VALIDATION")
 plot_split_distribution(y_test, "Distribution in TEST")
 
-# === PCA: dimensionality reduction and eigenface visualization ===
+# PCA: dimensionality reduction and eigenface visualization
 from sklearn.decomposition import PCA
 
 # Fit PCA on the scaled training set.
@@ -206,7 +206,7 @@ plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.savefig(os.path.join(pca_dir, "first_eigenfaces_grid.png"))
 plt.show()
 
-# === Autoencoder: nonlinear dimensionality reduction and reconstruction (TensorFlow/Keras) ===
+# Autoencoder: nonlinear dimensionality reduction and reconstruction (TensorFlow/Keras)
 # The autoencoder learns a compressed latent representation and tries to reconstruct the input.
 
 input_dim = X_train_scaled.shape[1]
@@ -255,7 +255,7 @@ with open(metrics_path, "a") as f:
     f.write(f"Final train MSE: {final_train_loss:.6f}\n")
     f.write(f"Final val MSE: {final_val_loss:.6f}\n\n")
 
-# === Autoencoder reconstructions (original vs reconstructed faces) ===
+# Autoencoder reconstructions (original vs reconstructed faces)
 # Use the trained autoencoder to reconstruct some test images.
 recon_test_scaled = autoencoder.predict(X_test_scaled)
 # Inverse-transform from scaled space back to original pixel space
@@ -290,13 +290,52 @@ plt.savefig(os.path.join(ae_dir, "autoencoder_reconstructions.png"))
 plt.show()
 
 
-# === Clustering on PCA embeddings: K-Means and Hierarchical ===
+# Clustering on PCA embeddings: K-Means and Hierarchical
 from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 clustering_dir = os.path.join(os.path.dirname(__file__), "clustering_outputs")
 os.makedirs(clustering_dir, exist_ok=True)
+
+# === Helper: cluster composition & purity analysis (Task 4) ===
+def compute_and_save_cluster_composition(cluster_labels, true_labels, algo_name):
+    """
+    Compute cluster composition (cluster x true label),
+    per-cluster purity, and overall weighted purity.
+
+    Saves:
+      - {algo_name}_cluster_composition.csv
+      - {algo_name}_cluster_purity.csv
+
+    Returns:
+      overall_purity (float)
+    """
+    # Crosstab: rows = clusters, columns = true labels
+    comp_df = pd.crosstab(cluster_labels, true_labels)
+    comp_path = os.path.join(clustering_dir, f"{algo_name}_cluster_composition.csv")
+    comp_df.to_csv(comp_path)
+
+    # Per-cluster sizes and majority-class counts
+    cluster_sizes = comp_df.sum(axis=1).values
+    max_per_cluster = comp_df.max(axis=1).values
+
+    # Overall weighted purity across all clusters
+    overall_purity = float(max_per_cluster.sum() / cluster_sizes.sum())
+
+    # Per-cluster purity table
+    per_cluster_purity = max_per_cluster / cluster_sizes
+    per_cluster_df = pd.DataFrame({
+        "cluster": comp_df.index,
+        "size": cluster_sizes,
+        "dominant_class": comp_df.idxmax(axis=1).values,
+        "purity": per_cluster_purity,
+    })
+    purity_path = os.path.join(clustering_dir, f"{algo_name}_cluster_purity.csv")
+    per_cluster_df.to_csv(purity_path, index=False)
+
+    print(f"[{algo_name}] Overall weighted purity: {overall_purity:.4f}")
+    return overall_purity
 
 
 # K-MEANS CLUSTERING
@@ -308,12 +347,15 @@ val_clusters_km = kmeans.predict(X_val_pca)
 test_clusters_km = kmeans.predict(X_test_pca)
 
 sil_km = silhouette_score(X_train_pca, train_clusters_km)
+purity_km = compute_and_save_cluster_composition(train_clusters_km, y_train, "kmeans")
+
 print("\n[K-Means] Silhouette Score:", sil_km)
 
 with open(metrics_path, "a") as f:
     f.write("=== K-Means Clustering ===\n")
     f.write(f"Clusters: {k}\n")
-    f.write(f"Silhouette Score: {sil_km:.4f}\n\n")
+    f.write(f"Silhouette Score: {sil_km:.4f}\n")
+    f.write(f"Overall weighted cluster purity: {purity_km:.4f}\n\n")
 
 # Plot K-Means result in PCA first 2 dims
 plt.figure(figsize=(7,5))
@@ -332,12 +374,15 @@ hier = AgglomerativeClustering(n_clusters=k, linkage='ward')
 train_clusters_hier = hier.fit_predict(X_train_pca)
 
 sil_hier = silhouette_score(X_train_pca, train_clusters_hier)
+purity_hier = compute_and_save_cluster_composition(train_clusters_hier, y_train, "hierarchical")
+
 print("[Hierarchical] Silhouette Score:", sil_hier)
 
 with open(metrics_path, "a") as f:
     f.write("=== Hierarchical Clustering ===\n")
     f.write(f"Clusters: {k}\n")
-    f.write(f"Silhouette Score: {sil_hier:.4f}\n\n")
+    f.write(f"Silhouette Score: {sil_hier:.4f}\n")
+    f.write(f"Overall weighted cluster purity: {purity_hier:.4f}\n\n")
 
 # Plot Hierarchical clusters in PCA 2D
 plt.figure(figsize=(7,5))
@@ -362,3 +407,266 @@ plt.title("Hierarchical Dendrogram (subset of training set)")
 plt.tight_layout()
 plt.savefig(os.path.join(clustering_dir, "hierarchical_dendrogram.png"))
 plt.show()
+
+
+# GMM + t-SNE on Autoencoder Latent Space 
+print("\n=== Extracting Autoencoder Latent Features ===")
+
+# Build encoder model to get the 64-D latent representation
+encoder = keras.Model(inputs=autoencoder.input,
+                      outputs=autoencoder.get_layer("latent").output)
+
+# Extract latent features
+X_train_latent = encoder.predict(X_train_scaled)
+X_val_latent = encoder.predict(X_val_scaled)
+X_test_latent = encoder.predict(X_test_scaled)
+
+
+latent_dir = os.path.join(os.path.dirname(__file__), "latent_clustering_outputs")
+os.makedirs(latent_dir, exist_ok=True)
+
+print("Latent shape:", X_train_latent.shape)
+
+
+# Gaussian Mixture Model (GMM) CLUSTERING
+
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score as sk_silhouette_score  # alias to avoid confusion
+
+print("\n=== Running GMM on Autoencoder Latent Space ===")
+
+gmm = GaussianMixture(
+    n_components=20,
+    covariance_type='full',
+    reg_covar=1e-3,
+    random_state=42
+)
+
+
+train_clusters_gmm = gmm.fit_predict(X_train_latent)
+val_clusters_gmm = gmm.predict(X_val_latent)
+test_clusters_gmm = gmm.predict(X_test_latent)
+
+sil_gmm = sk_silhouette_score(X_train_latent, train_clusters_gmm)
+purity_gmm = compute_and_save_cluster_composition(train_clusters_gmm, y_train, "gmm_latent")
+
+print("[GMM-Latent] Silhouette Score:", sil_gmm)
+
+with open(metrics_path, "a") as f:
+    f.write("=== GMM on Autoencoder Latent Space ===\n")
+    f.write("Clusters (components): 20\n")
+    f.write(f"Silhouette Score: {sil_gmm:.4f}\n")
+    f.write(f"Overall weighted cluster purity: {purity_gmm:.4f}\n\n")
+
+
+# t-SNE VISUALIZATION OF LATENT SPACE
+
+from sklearn.manifold import TSNE
+
+print("\n=== Running t-SNE on Latent Space ===")
+
+tsne = TSNE(
+    n_components=2,
+    perplexity=30,
+    learning_rate='auto',
+    init='pca',
+    random_state=42
+)
+
+X_train_tsne = tsne.fit_transform(X_train_latent)
+
+# Plot: GMM clusters colored on t-SNE
+plt.figure(figsize=(7,5))
+plt.scatter(X_train_tsne[:, 0], X_train_tsne[:, 1],
+            c=train_clusters_gmm, s=10, cmap="viridis")
+plt.title("GMM Clusters (Autoencoder Latent Space, t-SNE Projection)")
+plt.xlabel("t-SNE 1")
+plt.ylabel("t-SNE 2")
+plt.tight_layout()
+plt.savefig(os.path.join(latent_dir, "gmm_tsne_latent_clusters.png"))
+plt.show()
+
+# Plot: True labels on t-SNE
+plt.figure(figsize=(7,5))
+plt.scatter(X_train_tsne[:, 0], X_train_tsne[:, 1],
+            c=y_train, s=10, cmap="tab20")
+plt.title("True Labels (Autoencoder Latent Space, t-SNE Projection)")
+plt.xlabel("t-SNE 1")
+plt.ylabel("t-SNE 2")
+plt.tight_layout()
+plt.savefig(os.path.join(latent_dir, "tsne_latent_true_labels.png"))
+plt.show()
+
+print("\nGMM + t-SNE on Autoencoder Latent Space completed.")
+
+
+# Supervised Learning – Neural Network Classifier (Task 5)
+print("\n=== Preparing Neural Network Classifier ===")
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    precision_recall_fscore_support,
+    accuracy_score,
+)
+
+nn_dir = os.path.join(os.path.dirname(__file__), "nn_outputs")
+os.makedirs(nn_dir, exist_ok=True)
+
+print("\n=== Building Supervised Neural Network Classifier ===")
+
+num_classes = len(np.unique(y_train))
+
+# Use PCA features + K-Means cluster label (one-hot) as input to classifier
+def build_classifier_features(X_pca, cluster_labels, num_clusters):
+    cluster_onehot = keras.utils.to_categorical(cluster_labels, num_classes=num_clusters)
+    return np.concatenate([X_pca, cluster_onehot], axis=1)
+
+X_train_clf = build_classifier_features(X_train_pca, train_clusters_km, k)
+X_val_clf = build_classifier_features(X_val_pca, val_clusters_km, k)
+X_test_clf = build_classifier_features(X_test_pca, test_clusters_km, k)
+
+print("Classifier feature shapes:")
+print("Train:", X_train_clf.shape, "Val:", X_val_clf.shape, "Test:", X_test_clf.shape)
+
+input_dim_clf = X_train_clf.shape[1]
+
+# Define NN architecture (ANN) for classification
+clf_inputs = keras.Input(shape=(input_dim_clf,), name="clf_input")
+z = layers.Dense(256, activation="relu")(clf_inputs)
+z = layers.Dropout(0.3)(z)
+z = layers.Dense(128, activation="relu")(z)
+z = layers.Dropout(0.3)(z)
+clf_outputs = layers.Dense(num_classes, activation="softmax", name="clf_output")(z)
+
+clf_model = keras.Model(clf_inputs, clf_outputs, name="face_classifier_pca_kmeans")
+
+clf_model.compile(
+    optimizer=keras.optimizers.Adam(1e-3),
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"],
+)
+
+print("\n[Classifier] Model summary:")
+clf_model.summary()
+
+early_stop = keras.callbacks.EarlyStopping(
+    monitor="val_loss",
+    patience=5,
+    restore_best_weights=True,
+)
+
+history_clf = clf_model.fit(
+    X_train_clf,
+    y_train,
+    validation_data=(X_val_clf, y_val),
+    epochs=50,
+    batch_size=64,
+    shuffle=True,
+    callbacks=[early_stop],
+    verbose=1,
+)
+
+# Save classifier training history
+clf_history_df = pd.DataFrame({
+    "epoch": np.arange(1, len(history_clf.history["loss"]) + 1),
+    "train_loss": history_clf.history["loss"],
+    "val_loss": history_clf.history["val_loss"],
+    "train_accuracy": history_clf.history["accuracy"],
+    "val_accuracy": history_clf.history["val_accuracy"],
+})
+clf_history_df.to_csv(os.path.join(data_outputs_dir, "nn_classifier_history.csv"), index=False)
+
+# Plot training curves (loss & accuracy)
+plt.figure(figsize=(10,4))
+plt.subplot(1,2,1)
+plt.plot(clf_history_df["epoch"], clf_history_df["train_loss"], label="Train")
+plt.plot(clf_history_df["epoch"], clf_history_df["val_loss"], label="Val")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.title("NN Classifier - Loss")
+plt.legend()
+
+plt.subplot(1,2,2)
+plt.plot(clf_history_df["epoch"], clf_history_df["train_accuracy"], label="Train")
+plt.plot(clf_history_df["epoch"], clf_history_df["val_accuracy"], label="Val")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.title("NN Classifier - Accuracy")
+plt.legend()
+
+plt.tight_layout()
+plt.savefig(os.path.join(nn_dir, "nn_training_curves.png"))
+plt.show()
+
+# Evaluation helpers
+def evaluate_split(name, X_split, y_split, model, out_dir):
+    y_prob = model.predict(X_split)
+    y_pred = np.argmax(y_prob, axis=1)
+
+    acc = accuracy_score(y_split, y_pred)
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        y_split, y_pred, average="macro", zero_division=0
+    )
+
+    print(f"\n[NN Classifier] {name} metrics:")
+    print(f"Accuracy: {acc:.4f}")
+    print(f"Precision (macro): {precision:.4f}")
+    print(f"Recall (macro): {recall:.4f}")
+    print(f"F1-score (macro): {f1:.4f}")
+
+    # Save classification report
+    report_txt = classification_report(y_split, y_pred, digits=4, zero_division=0)
+    with open(os.path.join(out_dir, f"classification_report_{name.lower()}.txt"), "w") as f:
+        f.write(report_txt)
+
+    return y_pred, acc, precision, recall, f1
+
+# Evaluate on validation and test sets
+y_val_pred, acc_val, prec_val, rec_val, f1_val = evaluate_split(
+    "VAL", X_val_clf, y_val, clf_model, nn_dir
+)
+y_test_pred, acc_test, prec_test, rec_test, f1_test = evaluate_split(
+    "TEST", X_test_clf, y_test, clf_model, nn_dir
+)
+
+# Save confusion matrix for test set
+cm_test = confusion_matrix(y_test, y_test_pred)
+plt.figure(figsize=(6,5))
+plt.imshow(cm_test, interpolation="nearest")
+plt.title("NN Classifier - Confusion Matrix (Test)")
+plt.xlabel("Predicted label")
+plt.ylabel("True label")
+plt.colorbar()
+plt.tight_layout()
+plt.savefig(os.path.join(nn_dir, "nn_confusion_matrix_test.png"))
+plt.show()
+
+# Append NN metrics to global metrics file
+with open(metrics_path, "a") as f:
+    f.write("=== Neural Network Classifier (PCA + K-Means clusters) ===\n")
+    f.write(f"Validation - Accuracy: {acc_val:.4f}, Precision (macro): {prec_val:.4f}, "
+            f"Recall (macro): {rec_val:.4f}, F1 (macro): {f1_val:.4f}\n")
+    f.write(f"Test       - Accuracy: {acc_test:.4f}, Precision (macro): {prec_test:.4f}, "
+            f"Recall (macro): {rec_test:.4f}, F1 (macro): {f1_test:.4f}\n\n")
+
+# Sample test predictions: display images with true & predicted labels 
+num_show = min(8, X_test.shape[0])
+indices = np.random.choice(X_test.shape[0], size=num_show, replace=False)
+
+plt.figure(figsize=(2.5 * num_show, 3))
+for i, idx in enumerate(indices):
+    img = X_test[idx].reshape(h, w)
+    true_label = y_test[idx]
+    pred_label = y_test_pred[idx]
+
+    ax = plt.subplot(1, num_show, i + 1)
+    ax.imshow(img, cmap="gray")
+    ax.axis("off")
+    ax.set_title(f"T:{true_label}\nP:{pred_label}", fontsize=8)
+
+plt.suptitle("NN Classifier - Sample Test Predictions\nT=true, P=predicted", fontsize=10)
+plt.tight_layout(rect=[0, 0, 1, 0.85])
+plt.savefig(os.path.join(nn_dir, "nn_sample_predictions.png"))
+plt.show()
+
+print("\nNeural Network Classifier training and evaluation completed.")
