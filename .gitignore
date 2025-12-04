@@ -37,3 +37,6 @@ outputs/
 build/
 dist/
 *.egg-info/
+
+# --- Figures ---
+figs/
