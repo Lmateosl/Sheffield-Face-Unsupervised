@@ -131,6 +131,68 @@
                 </div>
             {% endif %}
 
+            <div class="details-grid">
+                <div class="detail-card">
+                    <div class="card-header small">
+                        <div>
+                            <p class="pill pill-solid secondary">Confidence summary</p>
+                            <h3>Model certainty</h3>
+                            <p class="dim tiny">Based on probability entropy.</p>
+                        </div>
+                    </div>
+                    <div class="certainty-wrap">
+                        <div class="certainty-chip {{ certainty.label|lower }}">
+                            {{ certainty.label }} certainty
+                        </div>
+                        {% if certainty.certainty_pct is not none %}
+                            <div class="certainty-bar">
+                                <span style="width: {{ (certainty.certainty_pct * 100) | round(1) }}%"></span>
+                            </div>
+                            <div class="dim tiny">Certainty: {{ (certainty.certainty_pct * 100) | round(1) }}% · Entropy: {{ certainty.entropy | round(3) }} bits</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="detail-card">
+                    <div class="card-header small">
+                        <div>
+                            <p class="pill pill-solid secondary">Prediction details</p>
+                            <h3>Run report</h3>
+                            <p class="dim tiny">Key facts from this inference.</p>
+                        </div>
+                    </div>
+                    <div class="kv-grid">
+                        <div><span class="dim tiny">Predicted group</span><strong>Person {{ result.predicted_group_1_based }}</strong></div>
+                        <div><span class="dim tiny">Top-1 prob</span>
+                            <strong>
+                                {% if top_probs and top_probs|length > 0 %}
+                                    {{ (top_probs[0].prob * 100) | round(2) }}%
+                                {% else %}
+                                    n/a
+                                {% endif %}
+                            </strong>
+                        </div>
+                        <div><span class="dim tiny">Classes</span><strong>{{ result.probabilities|length }}</strong></div>
+                        <div><span class="dim tiny">Category source</span><strong>{{ selected_category|capitalize }}</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pipeline-card">
+                <div class="card-header small">
+                    <div>
+                        <p class="pill pill-solid secondary">Feature pipeline</p>
+                        <h3>What the model does</h3>
+                        <p class="dim tiny">Steps applied before classification.</p>
+                    </div>
+                </div>
+                <div class="pipeline-badges">
+                    {% for step in pipeline_steps %}
+                        <span class="pipeline-chip">{{ step }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
             {% if ranked_probs %}
                 <div class="table-wrap">
                     <div class="table-head">

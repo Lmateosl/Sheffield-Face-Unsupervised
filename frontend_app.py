@@ -25,6 +25,15 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "bmp", "gif", "webp"}
 BASE_DIR = os.path.dirname(__file__)
 UMIST_PATH = os.path.join(BASE_DIR, "umist_cropped.mat")
+PIPELINE_STEPS = [
+    "Convert to grayscale",
+    "Resize to 112x92",
+    "Scale with StandardScaler",
+    "PCA transform",
+    "KMeans cluster (k=20)",
+    "Concatenate PCA + one-hot cluster",
+    "Neural classifier",
+]
 
 app = Flask(__name__)
 # Needed for flash messages; override with FLASK_SECRET_KEY in production.
@@ -60,6 +69,30 @@ def _rank_probabilities(probabilities: List[float]) -> List[Dict[str, Any]]:
     ]
     ranked.sort(key=lambda item: item["prob"], reverse=True)
     return ranked
+
+
+def _certainty_from_probs(probabilities: List[float]) -> Dict[str, Any]:
+    """
+    Compute entropy and a coarse certainty label from probabilities.
+    """
+    if not probabilities:
+        return {"entropy": None, "certainty_pct": None, "label": "Unknown"}
+    probs = np.array(probabilities, dtype=np.float64)
+    probs = probs / probs.sum()
+    entropy = -np.sum(probs * np.log2(probs + 1e-12))
+    max_entropy = np.log2(len(probs))
+    certainty_pct = max(0.0, min(1.0, 1.0 - entropy / max_entropy))
+    if certainty_pct > 0.66:
+        label = "High"
+    elif certainty_pct > 0.4:
+        label = "Medium"
+    else:
+        label = "Low"
+    return {
+        "entropy": float(entropy),
+        "certainty_pct": float(certainty_pct),
+        "label": label,
+    }
 
 
 def _blur_image(pil_img: Image.Image) -> Image.Image:
@@ -238,6 +271,7 @@ def _render_index(
 ) -> Any:
     top_probs = (ranked_probs or [])[:3] if ranked_probs else None
     examples = EXAMPLES_BY_CATEGORY.get(selected_category) or []
+    certainty = _certainty_from_probs(result.get("probabilities", []) if result else [])
     return render_template(
         "index.html",
         api_status=api_status,
@@ -249,6 +283,8 @@ def _render_index(
         examples=examples,
         categories=EXAMPLE_CATEGORIES,
         selected_category=selected_category,
+        pipeline_steps=PIPELINE_STEPS,
+        certainty=certainty,
     )
 
 
@@ -370,3 +406,4 @@ if __name__ == "__main__":
         port=int(os.getenv("FLASK_PORT", "5000")),
         debug=False,
     )
+
