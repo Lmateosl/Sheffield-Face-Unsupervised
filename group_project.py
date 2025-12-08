@@ -589,78 +589,13 @@ X_train_clf = build_classifier_features(X_train_pca, train_clusters_km, k)
 X_val_clf = build_classifier_features(X_val_pca, val_clusters_km, k)
 X_test_clf = build_classifier_features(X_test_pca, test_clusters_km, k)
 
+# Baseline features: PCA only (no cluster labels)
+X_train_pca_only = X_train_pca
+X_val_pca_only = X_val_pca
+X_test_pca_only = X_test_pca
+
 print("Classifier feature shapes:")
 print("Train:", X_train_clf.shape, "Val:", X_val_clf.shape, "Test:", X_test_clf.shape)
-
-input_dim_clf = X_train_clf.shape[1]
-
-# Define NN architecture (ANN) for classification
-clf_inputs = keras.Input(shape=(input_dim_clf,), name="clf_input")
-z = layers.Dense(256, activation="relu")(clf_inputs)
-z = layers.Dropout(0.3)(z)
-z = layers.Dense(128, activation="relu")(z)
-z = layers.Dropout(0.3)(z)
-clf_outputs = layers.Dense(num_classes, activation="softmax", name="clf_output")(z)
-
-clf_model = keras.Model(clf_inputs, clf_outputs, name="face_classifier_pca_kmeans")
-
-clf_model.compile(
-    optimizer=keras.optimizers.Adam(1e-3),
-    loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"],
-)
-
-print("\n[Classifier] Model summary:")
-clf_model.summary()
-
-early_stop = keras.callbacks.EarlyStopping(
-    monitor="val_loss",
-    patience=5,
-    restore_best_weights=True,
-)
-
-history_clf = clf_model.fit(
-    X_train_clf,
-    y_train,
-    validation_data=(X_val_clf, y_val),
-    epochs=50,
-    batch_size=64,
-    shuffle=True,
-    callbacks=[early_stop],
-    verbose=1,
-)
-
-# Save classifier training history
-clf_history_df = pd.DataFrame({
-    "epoch": np.arange(1, len(history_clf.history["loss"]) + 1),
-    "train_loss": history_clf.history["loss"],
-    "val_loss": history_clf.history["val_loss"],
-    "train_accuracy": history_clf.history["accuracy"],
-    "val_accuracy": history_clf.history["val_accuracy"],
-})
-clf_history_df.to_csv(os.path.join(data_outputs_dir, "nn_classifier_history.csv"), index=False)
-
-# Plot training curves (loss & accuracy)
-plt.figure(figsize=(10,4))
-plt.subplot(1,2,1)
-plt.plot(clf_history_df["epoch"], clf_history_df["train_loss"], label="Train")
-plt.plot(clf_history_df["epoch"], clf_history_df["val_loss"], label="Val")
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.title("NN Classifier - Loss")
-plt.legend()
-
-plt.subplot(1,2,2)
-plt.plot(clf_history_df["epoch"], clf_history_df["train_accuracy"], label="Train")
-plt.plot(clf_history_df["epoch"], clf_history_df["val_accuracy"], label="Val")
-plt.xlabel("Epoch")
-plt.ylabel("Accuracy")
-plt.title("NN Classifier - Accuracy")
-plt.legend()
-
-plt.tight_layout()
-plt.savefig(os.path.join(nn_dir, "nn_training_curves.png"))
-plt.show()
 
 # Evaluation helpers
 def evaluate_split(name, X_split, y_split, model, out_dir):
@@ -685,37 +620,248 @@ def evaluate_split(name, X_split, y_split, model, out_dir):
 
     return y_pred, acc, precision, recall, f1
 
-# Evaluate on validation and test sets
-y_val_pred, acc_val, prec_val, rec_val, f1_val = evaluate_split(
-    "VAL", X_val_clf, y_val, clf_model, nn_dir
-)
-y_test_pred, acc_test, prec_test, rec_test, f1_test = evaluate_split(
-    "TEST", X_test_clf, y_test, clf_model, nn_dir
+def run_classifier_hparam_search(
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    num_classes,
+    metrics_path,
+    nn_dir,
+):
+    print("\n=== Hyperparameter evaluation (classifier on PCA+KMeans features) ===")
+
+    search_space = [
+        {"name": "hp1_lr1e-3_dr0.3_u256_128", "lr": 1e-3, "dropout": 0.3, "units": [256, 128]},
+        {"name": "hp2_lr5e-4_dr0.4_u512_256", "lr": 5e-4, "dropout": 0.4, "units": [512, 256]},
+        {"name": "hp3_lr1e-3_dr0.5_u256_64", "lr": 1e-3, "dropout": 0.5, "units": [256, 64]},
+    ]
+
+    results = []
+    input_dim = X_train.shape[1]
+
+    for cfg in search_space:
+        print(f"Training {cfg['name']} ...")
+        inputs = keras.Input(shape=(input_dim,), name=f"clf_hp_input_{cfg['name']}")
+        z = layers.Dense(cfg["units"][0], activation="relu")(inputs)
+        z = layers.Dropout(cfg["dropout"])(z)
+        z = layers.Dense(cfg["units"][1], activation="relu")(z)
+        z = layers.Dropout(cfg["dropout"])(z)
+        outputs = layers.Dense(num_classes, activation="softmax")(z)
+
+        model = keras.Model(inputs, outputs, name=f"clf_hp_{cfg['name']}")
+        model.compile(
+            optimizer=keras.optimizers.Adam(cfg["lr"]),
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+        )
+
+        early_stop = keras.callbacks.EarlyStopping(
+            monitor="val_loss",
+            patience=3,
+            restore_best_weights=True,
+        )
+
+        model.fit(
+            X_train,
+            y_train,
+            validation_data=(X_val, y_val),
+            epochs=25,
+            batch_size=64,
+            shuffle=True,
+            callbacks=[early_stop],
+            verbose=0,
+        )
+
+        # Validation evaluation only; reports saved for traceability
+        _, acc, prec, rec, f1 = evaluate_split(
+            f"VAL_HP_{cfg['name']}", X_val, y_val, model, nn_dir
+        )
+
+        results.append({
+            "name": cfg["name"],
+            "acc": acc,
+            "prec": prec,
+            "rec": rec,
+            "f1": f1,
+            "cfg": cfg,
+        })
+
+    if results:
+        best = max(results, key=lambda r: r["acc"])
+        with open(metrics_path, "a") as f:
+            f.write("=== Classifier Hyperparameter Evaluation (PCA + KMeans features) ===\n")
+            for r in results:
+                cfg = r["cfg"]
+                f.write(
+                    f"{r['name']}: lr={cfg['lr']}, dropout={cfg['dropout']}, units={cfg['units']} | "
+                    f"Val Acc: {r['acc']:.4f}, Prec: {r['prec']:.4f}, Rec: {r['rec']:.4f}, F1: {r['f1']:.4f}\n"
+                )
+            f.write(f"Best (by val accuracy): {best['name']}\n\n")
+
+def build_and_train_classifier(
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    X_test,
+    y_test,
+    num_classes,
+    nn_dir,
+    metrics_path,
+    label_suffix,
+    write_history=True,
+):
+    """
+    label_suffix is a short string used to distinguish outputs, for example:
+      "_pca_kmeans" or "_pca_only"
+    write_history controls whether to save training history and curves (we only need it for the main model).
+    """
+
+    input_dim_clf = X_train.shape[1]
+
+    clf_inputs = keras.Input(shape=(input_dim_clf,), name="clf_input" + label_suffix)
+    z = layers.Dense(256, activation="relu")(clf_inputs)
+    z = layers.Dropout(0.3)(z)
+    z = layers.Dense(128, activation="relu")(z)
+    z = layers.Dropout(0.3)(z)
+    clf_outputs = layers.Dense(num_classes, activation="softmax", name="clf_output" + label_suffix)(z)
+
+    clf_model = keras.Model(clf_inputs, clf_outputs, name="face_classifier" + label_suffix)
+
+    clf_model.compile(
+        optimizer=keras.optimizers.Adam(1e-3),
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+
+    print(f"\n[Classifier{label_suffix}] Model summary:")
+    clf_model.summary()
+
+    early_stop = keras.callbacks.EarlyStopping(
+        monitor="val_loss",
+        patience=5,
+        restore_best_weights=True,
+    )
+
+    history_clf = clf_model.fit(
+        X_train,
+        y_train,
+        validation_data=(X_val, y_val),
+        epochs=50,
+        batch_size=64,
+        shuffle=True,
+        callbacks=[early_stop],
+        verbose=1,
+    )
+
+    # Save training history and curves only for the main model (PCA + KMeans)
+    if write_history:
+        clf_history_df = pd.DataFrame({
+            "epoch": np.arange(1, len(history_clf.history["loss"]) + 1),
+            "train_loss": history_clf.history["loss"],
+            "val_loss": history_clf.history["val_loss"],
+            "train_accuracy": history_clf.history["accuracy"],
+            "val_accuracy": history_clf.history["val_accuracy"],
+        })
+        clf_history_df.to_csv(os.path.join(data_outputs_dir, f"nn_classifier_history{label_suffix}.csv"), index=False)
+
+        plt.figure(figsize=(10, 4))
+        plt.subplot(1, 2, 1)
+        plt.plot(clf_history_df["epoch"], clf_history_df["train_loss"], label="Train")
+        plt.plot(clf_history_df["epoch"], clf_history_df["val_loss"], label="Val")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title(f"NN Classifier{label_suffix} - Loss")
+        plt.legend()
+
+        plt.subplot(1, 2, 2)
+        plt.plot(clf_history_df["epoch"], clf_history_df["train_accuracy"], label="Train")
+        plt.plot(clf_history_df["epoch"], clf_history_df["val_accuracy"], label="Val")
+        plt.xlabel("Epoch")
+        plt.ylabel("Accuracy")
+        plt.title(f"NN Classifier{label_suffix} - Accuracy")
+        plt.legend()
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(nn_dir, f"nn_training_curves{label_suffix}.png"))
+        plt.show()
+
+    # Evaluate on validation and test sets using existing helper
+    y_val_pred, acc_val, prec_val, rec_val, f1_val = evaluate_split(
+        "VAL" + label_suffix.upper(), X_val, y_val, clf_model, nn_dir
+    )
+    y_test_pred, acc_test, prec_test, rec_test, f1_test = evaluate_split(
+        "TEST" + label_suffix.upper(), X_test, y_test, clf_model, nn_dir
+    )
+
+    # Save confusion matrix for test set
+    cm_test = confusion_matrix(y_test, y_test_pred)
+    plt.figure(figsize=(6, 5))
+    plt.imshow(cm_test, interpolation="nearest")
+    plt.title(f"NN Classifier{label_suffix} - Confusion Matrix (Test)")
+    plt.xlabel("Predicted label")
+    plt.ylabel("True label")
+    plt.colorbar()
+    plt.tight_layout()
+    plt.savefig(os.path.join(nn_dir, f"nn_confusion_matrix_test{label_suffix}.png"))
+    plt.show()
+
+    # Append metrics to global metrics file
+    with open(metrics_path, "a") as f:
+        f.write(f"=== Neural Network Classifier {label_suffix} ===\n")
+        f.write(f"Validation - Accuracy: {acc_val:.4f}, Precision (macro): {prec_val:.4f}, "
+                f"Recall (macro): {rec_val:.4f}, F1 (macro): {f1_val:.4f}\n")
+        f.write(f"Test       - Accuracy: {acc_test:.4f}, Precision (macro): {prec_test:.4f}, "
+                f"Recall (macro): {rec_test:.4f}, F1 (macro): {f1_test:.4f}\n\n")
+
+    return clf_model
+
+# Hyperparameter evaluation (lightweight search on classifier settings)
+run_classifier_hparam_search(
+    X_train_clf,
+    y_train,
+    X_val_clf,
+    y_val,
+    num_classes,
+    metrics_path,
+    nn_dir,
 )
 
-# Save confusion matrix for test set
-cm_test = confusion_matrix(y_test, y_test_pred)
-plt.figure(figsize=(6,5))
-plt.imshow(cm_test, interpolation="nearest")
-plt.title("NN Classifier - Confusion Matrix (Test)")
-plt.xlabel("Predicted label")
-plt.ylabel("True label")
-plt.colorbar()
-plt.tight_layout()
-plt.savefig(os.path.join(nn_dir, "nn_confusion_matrix_test.png"))
-plt.show()
+# Train classifiers
+clf_model_pca_kmeans = build_and_train_classifier(
+    X_train_clf,
+    y_train,
+    X_val_clf,
+    y_val,
+    X_test_clf,
+    y_test,
+    num_classes=num_classes,
+    nn_dir=nn_dir,
+    metrics_path=metrics_path,
+    label_suffix="_pca_kmeans",
+    write_history=True,  # save curves and history for this main model
+)
 
-# Append NN metrics to global metrics file
-with open(metrics_path, "a") as f:
-    f.write("=== Neural Network Classifier (PCA + K-Means clusters) ===\n")
-    f.write(f"Validation - Accuracy: {acc_val:.4f}, Precision (macro): {prec_val:.4f}, "
-            f"Recall (macro): {rec_val:.4f}, F1 (macro): {f1_val:.4f}\n")
-    f.write(f"Test       - Accuracy: {acc_test:.4f}, Precision (macro): {prec_test:.4f}, "
-            f"Recall (macro): {rec_test:.4f}, F1 (macro): {f1_test:.4f}\n\n")
+clf_model_pca_only = build_and_train_classifier(
+    X_train_pca_only,
+    y_train,
+    X_val_pca_only,
+    y_val,
+    X_test_pca_only,
+    y_test,
+    num_classes=num_classes,
+    nn_dir=nn_dir,
+    metrics_path=metrics_path,
+    label_suffix="_pca_only",
+    write_history=False,  # optional, we do not need extra curves for the baseline
+)
 
 # Sample test predictions: display images with true & predicted labels 
 num_show = min(8, X_test.shape[0])
 indices = np.random.choice(X_test.shape[0], size=num_show, replace=False)
+
+y_test_pred = np.argmax(clf_model_pca_kmeans.predict(X_test_clf), axis=1)
 
 plt.figure(figsize=(2.5 * num_show, 3))
 for i, idx in enumerate(indices):
@@ -748,6 +894,6 @@ dump(pca, os.path.join(models_dir, "pca.joblib"))
 dump(kmeans, os.path.join(models_dir, "kmeans.joblib"))
 
 # Save Keras classifier model
-clf_model.save(os.path.join(models_dir, "face_classifier_pca_kmeans.h5"))
+clf_model_pca_kmeans.save(os.path.join(models_dir, "face_classifier_pca_kmeans.h5"))
 
-print("✓ All models saved to:", models_dir)
+print("All models saved to:", models_dir)
