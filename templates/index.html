@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}UMIST Face Explorer{% endblock %}
+
+{% block content %}
+<header class="hero">
+    <div class="pill pill-ghost">UMIST Faces · Unsupervised pipeline</div>
+    <h1>Try the Face Cluster Classifier</h1>
+    <p class="lede">
+        Upload a face image, and the FastAPI backend will project it through PCA, cluster it,
+        and predict the most likely person group in the UMIST dataset.
+    </p>
+    <div class="status-row">
+        <div class="status-badge {{ 'online' if api_status else 'offline' }}">
+            <span class="dot"></span>
+            <span>{{ api_status_msg or 'API status unknown' }}</span>
+        </div>
+        <div class="hint">API base: {{ config.API_BASE_URL if config.API_BASE_URL else 'http://127.0.0.1:8000' }}</div>
+    </div>
+</header>
+
+<main class="layout">
+    <section class="card upload-card">
+        <div class="card-header">
+            <div>
+                <p class="pill pill-solid">Upload &amp; predict</p>
+                <h2>Run an inference</h2>
+                <p class="dim">PNG · JPG · JPEG · BMP · GIF · WEBP · up to 6MB</p>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-area">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('predict') }}" method="post" enctype="multipart/form-data" class="upload-form">
+            <label for="image-input" class="dropzone" id="dropzone">
+                <div class="drop-inner">
+                    <div class="drop-icon">⬆</div>
+                    <div>
+                        <strong>Drop an image</strong> or click to browse
+                        <p class="dim">We will convert to grayscale 112×92 to match training.</p>
+                    </div>
+                </div>
+                <input type="file" name="image" id="image-input" accept="image/*" required>
+            </label>
+            <div class="form-footer">
+                <div id="file-name" class="dim">No file selected yet.</div>
+                <button type="submit" class="btn-primary">Run model</button>
+            </div>
+        </form>
+
+        {% if examples %}
+            <div class="examples-head">
+                <p class="dim">Or pick a UMIST example:</p>
+                <div class="example-grid">
+                    {% for ex in examples %}
+                        <form class="example-card" action="{{ url_for('predict_example') }}" method="post">
+                            <input type="hidden" name="example_id" value="{{ ex.id }}">
+                            <button type="submit" class="example-btn">
+                                <img src="data:image/png;base64,{{ ex.preview_b64 }}" alt="Person {{ ex.person }} sample {{ ex.sample }}">
+                                <div class="example-meta">
+                                    <span class="pill pill-ghost">Person {{ ex.person }}</span>
+                                    <span class="dim tiny">Sample {{ ex.sample }}</span>
+                                </div>
+                            </button>
+                        </form>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    </section>
+
+    <section class="card results-card">
+        <div class="card-header">
+            <div>
+                <p class="pill pill-solid secondary">Prediction</p>
+                <h2>Model output</h2>
+                <p class="dim">We show the predicted person group and the top confidences.</p>
+            </div>
+        </div>
+        {% if result %}
+            <div class="result-main">
+                <div>
+                    <p class="dim">Predicted person/group</p>
+                    <div class="prediction">{{ result.predicted_group_1_based }}</div>
+                    <div class="tiny">0-based label: {{ result.predicted_label_0_based }}</div>
+                </div>
+                {% if top_probs and top_probs|length > 0 %}
+                    <div class="confidence">
+                        <p class="dim">Confidence</p>
+                        <div class="pill pill-solid">
+                            {{ (top_probs[0].prob * 100) | round(2) }}%
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+            {% if preview_data %}
+                <div class="preview-block">
+                    <p class="dim">Submitted image</p>
+                    <img src="data:image/*;base64,{{ preview_data }}" alt="Uploaded preview">
+                </div>
+            {% endif %}
+
+            {% if top_probs %}
+                <div class="top-probabilities">
+                    {% for item in top_probs %}
+                        <div class="bar-row">
+                            <div class="bar-label">Group {{ item.group }}</div>
+                            <div class="bar">
+                                <span style="width: {{ (item.prob * 100) | round(2) }}%;"></span>
+                            </div>
+                            <div class="bar-value">{{ (item.prob * 100) | round(2) }}%</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% if ranked_probs %}
+                <div class="table-wrap">
+                    <div class="table-head">
+                        <span>Rank</span>
+                        <span>Group</span>
+                        <span>Probability</span>
+                    </div>
+                    {% for item in ranked_probs %}
+                        <div class="table-row">
+                            <span>{{ loop.index }}</span>
+                            <span>Person {{ item.group }}</span>
+                            <span>{{ (item.prob * 100) | round(3) }}%</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <div class="ghost-icon">👤</div>
+                <p>Upload a face image to see the model's prediction.</p>
+            </div>
+        {% endif %}
+    </section>
+</main>
+
+<section class="card footnote">
+    <div>
+        <h3>How it works</h3>
+        <p class="dim">
+            The FastAPI endpoint scales the image, projects it through PCA,
+            assigns a K-Means cluster, concatenates one-hot cluster features,
+            and uses a small neural classifier trained on UMIST groups.
+        </p>
+    </div>
+    <div class="stats">
+        <div>
+            <p class="dim tiny">Expected size</p>
+            <strong>112×92</strong>
+        </div>
+        <div>
+            <p class="dim tiny">Classes</p>
+            <strong>20 people</strong>
+        </div>
+        <div>
+            <p class="dim tiny">Backend</p>
+            <strong>FastAPI + TensorFlow</strong>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,8 +1,9 @@
+import io
 import os
 from typing import List
 
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from joblib import load
@@ -199,9 +200,6 @@ def predict_from_pixels(request: PredictFromPixelsRequest):
     return predict_from_flat_pixels(pixels)
 
 
-import io  # Placed here to avoid circular issues in some tools
-
-
 @app.post("/predict-image", response_model=PredictResponse)
 async def predict_from_image(file: UploadFile = File(...)):
     """
@@ -217,3 +215,14 @@ async def predict_from_image(file: UploadFile = File(...)):
     file.file.close()
 
     return predict_from_flat_pixels(flat)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "api:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8000")),
+        reload=False,
+    )
