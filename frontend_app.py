@@ -62,7 +62,7 @@ def _rank_probabilities(probabilities: List[float]) -> List[Dict[str, Any]]:
     return ranked
 
 
-def _load_example_faces(max_people: int = 20, per_person: int = 2) -> List[Dict[str, Any]]:
+def _load_example_faces(max_people: int = 20, per_person: int = 3) -> List[Dict[str, Any]]:
     """
     Load a handful of sample faces from the bundled UMIST set and cache as PNG/base64.
     This keeps the demo self-contained.
@@ -79,22 +79,26 @@ def _load_example_faces(max_people: int = 20, per_person: int = 2) -> List[Dict[
     if facedat is None:
         return []
 
+    rng = np.random.default_rng(1234)
     examples: List[Dict[str, Any]] = []
     num_people = min(max_people, facedat.shape[1])
     for person_idx in range(num_people):
         imgs = facedat[0, person_idx]
-        take = min(per_person, imgs.shape[2])
-        for i in range(take):
-            arr = imgs[:, :, i].astype(np.uint8)
+        num_imgs = imgs.shape[2]
+        take = min(per_person, num_imgs)
+        chosen = rng.choice(num_imgs, size=take, replace=False)
+        for sample_rank, img_idx in enumerate(sorted(chosen), start=1):
+            arr = imgs[:, :, img_idx].astype(np.uint8)
             pil_img = Image.fromarray(arr, mode="L")
             buffer = io.BytesIO()
             pil_img.save(buffer, format="PNG")
             raw_bytes = buffer.getvalue()
             examples.append(
                 {
-                    "id": f"p{person_idx+1}_img{i+1}",
+                    "id": f"p{person_idx+1}_img{img_idx+1}",
                     "person": person_idx + 1,
-                    "sample": i + 1,
+                    "sample": sample_rank,
+                    "img_index": img_idx + 1,
                     "preview_b64": base64.b64encode(raw_bytes).decode("utf-8"),
                     "bytes": raw_bytes,
                 }
