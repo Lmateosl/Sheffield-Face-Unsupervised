@@ -10,6 +10,9 @@
         Upload a face image, and the FastAPI backend will project it through PCA, cluster it,
         and predict the most likely person group in the UMIST dataset.
     </p>
+    <div class="hero-actions">
+        <button class="btn-secondary" type="button" id="show-report">View analysis report (inline)</button>
+    </div>
     <div class="status-row">
         <div class="status-badge {{ 'online' if api_status else 'offline' }}">
             <span class="dot"></span>
@@ -18,6 +21,20 @@
         <div class="hint">API base: {{ config.API_BASE_URL if config.API_BASE_URL else 'http://127.0.0.1:8000' }}</div>
     </div>
 </header>
+
+<section id="analysis-report" class="card report-card collapsed">
+    <div class="card-header">
+        <div>
+            <p class="pill pill-solid secondary">Analysis report</p>
+            <h2>Project documentation</h2>
+            <p class="dim">Rendered inline from the PDF for quick reference.</p>
+        </div>
+    </div>
+    <div id="report-frame-wrap">
+        <iframe id="report-frame" src="" data-report-url="{{ url_for('analysis_report') }}" class="report-frame" title="Analysis report" loading="lazy"></iframe>
+        <p class="dim tiny">If the PDF does not render, <a href="{{ url_for('analysis_report') }}">open the report directly</a>.</p>
+    </div>
+</section>
 
 <main class="layout">
     <section class="card upload-card">

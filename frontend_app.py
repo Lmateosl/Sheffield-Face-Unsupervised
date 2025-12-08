@@ -17,6 +17,7 @@ from flask import (
     flash,
     redirect,
     render_template,
+    send_from_directory,
     request,
     url_for,
 )
@@ -25,6 +26,8 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "bmp", "gif", "webp"}
 BASE_DIR = os.path.dirname(__file__)
 UMIST_PATH = os.path.join(BASE_DIR, "umist_cropped.mat")
+REPORT_PATH = os.path.join(BASE_DIR, "static")
+REPORT_FILENAME = "analysis_report_group6.pdf"
 PIPELINE_STEPS = [
     "Convert to grayscale",
     "Resize to 112x92",
@@ -295,6 +298,20 @@ def index():
     if selected_category not in EXAMPLES_BY_CATEGORY:
         selected_category = "clean"
     return _render_index(api_status, api_msg, selected_category=selected_category)
+
+
+@app.get("/analysis-report")
+def analysis_report():
+    """
+    Serve the project analysis report PDF from the static directory.
+    """
+    return send_from_directory(
+        REPORT_PATH,
+        REPORT_FILENAME,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=REPORT_FILENAME,
+    )
 
 
 @app.route("/predict", methods=["POST"])

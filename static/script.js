@@ -31,3 +31,24 @@ if (dropzone) {
         }
     });
 }
+
+// Lazy-load analysis report on demand
+const showReportBtn = document.getElementById("show-report");
+const reportCard = document.getElementById("analysis-report");
+const reportFrame = document.getElementById("report-frame");
+
+if (showReportBtn && reportCard && reportFrame) {
+    showReportBtn.addEventListener("click", () => {
+        if (reportCard.classList.contains("collapsed")) {
+            const url = reportFrame.getAttribute("data-report-url");
+            if (url) {
+                reportFrame.setAttribute("src", url);
+            }
+            reportCard.classList.remove("collapsed");
+            reportCard.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+            reportCard.classList.add("collapsed");
+            reportFrame.setAttribute("src", "");
+        }
+    });
+}
