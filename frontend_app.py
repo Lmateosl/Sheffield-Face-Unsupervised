@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import requests
 import scipy.io
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 from flask import (
     Flask,
     flash,
@@ -67,6 +67,28 @@ def _blur_image(pil_img: Image.Image) -> Image.Image:
     return pil_img.filter(ImageFilter.GaussianBlur(radius=3))
 
 
+def _make_blocked_transform(seed: int = 2025):
+    """
+    Create a transform that masks a random rectangular patch on the face.
+    Uses a fixed RNG seed so the gallery stays stable across reloads.
+    """
+    rng = np.random.default_rng(seed)
+
+    def _block(img: Image.Image) -> Image.Image:
+        w, h = img.size
+        bw = int(w * rng.uniform(0.22, 0.35))
+        bh = int(h * rng.uniform(0.22, 0.35))
+        x0 = int(rng.uniform(0, w - bw))
+        y0 = int(rng.uniform(0, h - bh))
+        x1, y1 = x0 + bw, y0 + bh
+        img = img.copy()
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([x0, y0, x1, y1], fill=0)
+        return img
+
+    return _block
+
+
 def _load_example_faces(
     max_people: int = 20,
     per_person: int = 3,
@@ -120,7 +142,7 @@ def _load_example_faces(
 EXAMPLE_CATEGORIES = [
     {"key": "clean", "label": "Clean faces", "transform": None},
     {"key": "blurry", "label": "Blurry faces", "transform": _blur_image},
-    # Placeholder for future categories, e.g., blocked faces.
+    {"key": "blocked", "label": "Blocked faces", "transform": _make_blocked_transform()},
 ]
 
 
