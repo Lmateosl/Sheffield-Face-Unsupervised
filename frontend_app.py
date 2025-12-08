@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import requests
 import scipy.io
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 from flask import (
     Flask,
     flash,
@@ -89,6 +89,69 @@ def _make_blocked_transform(seed: int = 2025):
     return _block
 
 
+def _make_lowlight_contrast_transform(seed: int = 2026):
+    """
+    Darken and boost contrast to simulate low-light + high-contrast images.
+    """
+    rng = np.random.default_rng(seed)
+
+    def _lowlight(img: Image.Image) -> Image.Image:
+        brightness = rng.uniform(0.35, 0.55)
+        contrast = rng.uniform(1.2, 1.6)
+        img = ImageEnhance.Brightness(img).enhance(brightness)
+        img = ImageEnhance.Contrast(img).enhance(contrast)
+        return img
+
+    return _lowlight
+
+
+def _make_noise_transform(seed: int = 2027):
+    """
+    Add mild Gaussian noise.
+    """
+    rng = np.random.default_rng(seed)
+
+    def _noisy(img: Image.Image) -> Image.Image:
+        arr = np.array(img, dtype=np.float32)
+        sigma = rng.uniform(18, 28)
+        noise = rng.normal(0, sigma, size=arr.shape)
+        noisy = np.clip(arr + noise, 0, 255).astype(np.uint8)
+        return Image.fromarray(noisy, mode="L")
+
+    return _noisy
+
+
+def _flip_horizontal(img: Image.Image) -> Image.Image:
+    return ImageOps.mirror(img)
+
+
+def _make_color_cast_transform(seed: int = 2028):
+    """
+    Apply a warm or cool tint; preview shows color, API will still grayscale on send.
+    """
+    rng = np.random.default_rng(seed)
+    # Pre-generate coefficients for reproducibility
+    casts = []
+    for _ in range(5):
+        # Warm: boost R, reduce B slightly; Cool: inverse
+        warm = rng.random() > 0.5
+        if warm:
+            casts.append((rng.uniform(1.05, 1.25), 1.0, rng.uniform(0.8, 0.95)))
+        else:
+            casts.append((rng.uniform(0.8, 0.95), 1.0, rng.uniform(1.05, 1.25)))
+
+    def _colorize(img: Image.Image) -> Image.Image:
+        img_rgb = img.convert("RGB")
+        factors = casts[rng.integers(0, len(casts))]
+        r, g, b = img_rgb.split()
+        r = r.point(lambda x: np.clip(x * factors[0], 0, 255))
+        g = g.point(lambda x: np.clip(x * factors[1], 0, 255))
+        b = b.point(lambda x: np.clip(x * factors[2], 0, 255))
+        return Image.merge("RGB", (r, g, b))
+
+    return _colorize
+
+
 def _load_example_faces(
     max_people: int = 20,
     per_person: int = 3,
@@ -143,6 +206,10 @@ EXAMPLE_CATEGORIES = [
     {"key": "clean", "label": "Clean faces", "transform": None},
     {"key": "blurry", "label": "Blurry faces", "transform": _blur_image},
     {"key": "blocked", "label": "Blocked faces", "transform": _make_blocked_transform()},
+    {"key": "lowlight", "label": "Low-light / contrast", "transform": _make_lowlight_contrast_transform()},
+    {"key": "noisy", "label": "Noisy faces", "transform": _make_noise_transform()},
+    {"key": "flipped", "label": "Horizontal flip", "transform": _flip_horizontal},
+    {"key": "colorcast", "label": "Color-cast faces", "transform": _make_color_cast_transform()},
 ]
 
 
