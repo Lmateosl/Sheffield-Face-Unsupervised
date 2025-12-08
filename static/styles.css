@@ -285,6 +285,47 @@ p {
     margin-top: 10px;
 }
 
+.examples-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.category-toggle {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none;
+    transition: all 0.12s ease;
+}
+
+.cat-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.cat-chip.active {
+    background: linear-gradient(120deg, #7cf2c4, #6bb6ff);
+    color: #04132c;
+    border-color: transparent;
+    box-shadow: 0 8px 24px rgba(124, 242, 196, 0.3);
+}
+
 .example-grid {
     display: grid;
     gap: 10px;

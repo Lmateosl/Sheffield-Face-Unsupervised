@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import requests
 import scipy.io
-from PIL import Image
+from PIL import Image, ImageFilter
 from flask import (
     Flask,
     flash,
@@ -62,7 +62,16 @@ def _rank_probabilities(probabilities: List[float]) -> List[Dict[str, Any]]:
     return ranked
 
 
-def _load_example_faces(max_people: int = 20, per_person: int = 3) -> List[Dict[str, Any]]:
+def _blur_image(pil_img: Image.Image) -> Image.Image:
+    """Gaussian blur helper for generating blurred variants."""
+    return pil_img.filter(ImageFilter.GaussianBlur(radius=3))
+
+
+def _load_example_faces(
+    max_people: int = 20,
+    per_person: int = 3,
+    transform=None,
+) -> List[Dict[str, Any]]:
     """
     Load a handful of sample faces from the bundled UMIST set and cache as PNG/base64.
     This keeps the demo self-contained.
@@ -90,6 +99,8 @@ def _load_example_faces(max_people: int = 20, per_person: int = 3) -> List[Dict[
         for sample_rank, img_idx in enumerate(sorted(chosen), start=1):
             arr = imgs[:, :, img_idx].astype(np.uint8)
             pil_img = Image.fromarray(arr, mode="L")
+            if transform:
+                pil_img = transform(pil_img)
             buffer = io.BytesIO()
             pil_img.save(buffer, format="PNG")
             raw_bytes = buffer.getvalue()
@@ -106,8 +117,26 @@ def _load_example_faces(max_people: int = 20, per_person: int = 3) -> List[Dict[
     return examples
 
 
-EXAMPLE_FACES = _load_example_faces()
-EXAMPLE_MAP = {ex["id"]: ex for ex in EXAMPLE_FACES}
+EXAMPLE_CATEGORIES = [
+    {"key": "clean", "label": "Clean faces", "transform": None},
+    {"key": "blurry", "label": "Blurry faces", "transform": _blur_image},
+    # Placeholder for future categories, e.g., blocked faces.
+]
+
+
+def _build_examples_by_category() -> Dict[str, List[Dict[str, Any]]]:
+    by_cat: Dict[str, List[Dict[str, Any]]] = {}
+    for cat in EXAMPLE_CATEGORIES:
+        examples = _load_example_faces(transform=cat["transform"])
+        by_cat[cat["key"]] = examples
+    return by_cat
+
+
+EXAMPLES_BY_CATEGORY = _build_examples_by_category()
+EXAMPLE_MAP = {
+    cat_key: {ex["id"]: ex for ex in ex_list}
+    for cat_key, ex_list in EXAMPLES_BY_CATEGORY.items()
+}
 
 
 def _render_index(
@@ -116,8 +145,10 @@ def _render_index(
     result: Dict[str, Any] | None = None,
     preview_data: str | None = None,
     ranked_probs: List[Dict[str, Any]] | None = None,
+    selected_category: str = "clean",
 ) -> Any:
     top_probs = (ranked_probs or [])[:3] if ranked_probs else None
+    examples = EXAMPLES_BY_CATEGORY.get(selected_category) or []
     return render_template(
         "index.html",
         api_status=api_status,
@@ -126,14 +157,19 @@ def _render_index(
         preview_data=preview_data,
         ranked_probs=ranked_probs,
         top_probs=top_probs,
-        examples=EXAMPLE_FACES,
+        examples=examples,
+        categories=EXAMPLE_CATEGORIES,
+        selected_category=selected_category,
     )
 
 
 @app.route("/", methods=["GET"])
 def index():
     api_status, api_msg = _ping_api_health()
-    return _render_index(api_status, api_msg)
+    selected_category = request.args.get("category", "clean")
+    if selected_category not in EXAMPLES_BY_CATEGORY:
+        selected_category = "clean"
+    return _render_index(api_status, api_msg, selected_category=selected_category)
 
 
 @app.route("/predict", methods=["POST"])
@@ -189,8 +225,12 @@ def predict():
 
 @app.route("/predict-example", methods=["POST"])
 def predict_example():
+    selected_category = request.form.get("category", "clean")
+    if selected_category not in EXAMPLES_BY_CATEGORY:
+        selected_category = "clean"
+
     example_id = request.form.get("example_id")
-    example = EXAMPLE_MAP.get(example_id or "")
+    example = EXAMPLE_MAP.get(selected_category, {}).get(example_id or "")
     if not example:
         flash("Example not found. Please try another image.", "error")
         return redirect(url_for("index"))
@@ -231,6 +271,7 @@ def predict_example():
         result=payload,
         preview_data=preview_data,
         ranked_probs=ranked,
+        selected_category=selected_category,
     )
 
 

@@ -58,11 +58,19 @@
 
         {% if examples %}
             <div class="examples-head">
-                <p class="dim">Or pick a UMIST example:</p>
+                <div class="examples-top">
+                    <p class="dim">Or pick a UMIST example:</p>
+                    <div class="category-toggle">
+                        {% for cat in categories %}
+                            <a class="cat-chip {{ 'active' if cat.key == selected_category else '' }}" href="{{ url_for('index', category=cat.key) }}">{{ cat.label }}</a>
+                        {% endfor %}
+                    </div>
+                </div>
                 <div class="example-grid">
                     {% for ex in examples %}
                         <form class="example-card" action="{{ url_for('predict_example') }}" method="post">
                             <input type="hidden" name="example_id" value="{{ ex.id }}">
+                            <input type="hidden" name="category" value="{{ selected_category }}">
                             <button type="submit" class="example-btn">
                                 <img src="data:image/png;base64,{{ ex.preview_b64 }}" alt="Person {{ ex.person }} sample {{ ex.sample }}">
                                 <div class="example-meta">
