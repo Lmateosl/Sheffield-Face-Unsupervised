@@ -13,7 +13,7 @@ from tensorflow.keras import layers
 
 # Global random seed
 RANDOM_STATE = 42
-np.random.seed(RANDOM_STATE) .
+np.random.seed(RANDOM_STATE)
 
 # Output directory for figures
 OUT_DIR = os.path.join(os.path.dirname(__file__), "figs")
@@ -733,4 +733,21 @@ plt.tight_layout(rect=[0, 0, 1, 0.85])
 plt.savefig(os.path.join(nn_dir, "nn_sample_predictions.png"))
 plt.show()
 
+
 print("\nNeural Network Classifier training and evaluation completed.")
+
+# ==== SAVE MODELS FOR API USE ====
+from joblib import dump
+
+models_dir = os.path.join(os.path.dirname(__file__), "models")
+os.makedirs(models_dir, exist_ok=True)
+
+# Save sklearn objects
+dump(scaler, os.path.join(models_dir, "scaler.joblib"))
+dump(pca, os.path.join(models_dir, "pca.joblib"))
+dump(kmeans, os.path.join(models_dir, "kmeans.joblib"))
+
+# Save Keras classifier model
+clf_model.save(os.path.join(models_dir, "face_classifier_pca_kmeans.h5"))
+
+print("✓ All models saved to:", models_dir)

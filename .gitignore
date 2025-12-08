@@ -23,6 +23,10 @@ split_distributions/
 pca_outputs/
 autoencoder_outputs/
 outputs/
+latent_clustering_outputs/
+nn_outputs/
+clustering_outputs/
+sample_images/
 
 # --- Mac / OS metadata ---
 .DS_Store
@@ -32,6 +36,7 @@ outputs/
 
 # --- Logs ---
 *.log
+*.docx
 
 # --- Python build artifacts ---
 build/
