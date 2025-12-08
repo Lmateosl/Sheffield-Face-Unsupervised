@@ -27,7 +27,7 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "bmp", "gif", "webp"}
 BASE_DIR = os.path.dirname(__file__)
 UMIST_PATH = os.path.join(BASE_DIR, "umist_cropped.mat")
 REPORT_PATH = os.path.join(BASE_DIR, "static")
-REPORT_FILENAME = "analysis_report_group6.pdf"
+REPORT_FILENAME = "analysis_report_group6_FINAL.pdf"
 PIPELINE_STEPS = [
     "Convert to grayscale",
     "Resize to 112x92",

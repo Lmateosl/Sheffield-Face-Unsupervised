@@ -13,6 +13,7 @@ from tensorflow.keras import layers
 
 # Global random seed
 RANDOM_STATE = 42
+np.random.seed(RANDOM_STATE)
 tf.random.set_seed(RANDOM_STATE)
 
 # Output directory for figures
