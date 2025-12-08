@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UMIST Face Classification System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UMIST Face Classification System</h1>
+            <p class="subtitle">Unsupervised Learning with Neural Network Classifier</p>
+        </header>
+
+        <main>
+            <section class="info-section">
+                <h2>System Overview</h2>
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>Technology Stack</h3>
+                        <ul>
+                            <li><strong>Preprocessing:</strong> StandardScaler</li>
+                            <li><strong>Dimensionality Reduction:</strong> PCA (95% variance)</li>
+                            <li><strong>Clustering:</strong> K-Means (20 clusters)</li>
+                            <li><strong>Classification:</strong> Deep Neural Network</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h3>Dataset</h3>
+                        <ul>
+                            <li><strong>Source:</strong> UMIST Face Database</li>
+                            <li><strong>Classes:</strong> 20 individuals</li>
+                            <li><strong>Image Size:</strong> 112×92 pixels</li>
+                            <li><strong>Format:</strong> Grayscale</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section class="upload-section">
+                <h2>Upload Face Image</h2>
+                <p class="instruction">Upload a face image to identify which person it belongs to (0-19)</p>
+                
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="imageInput" accept="image/*" hidden>
+                    <div class="upload-placeholder">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <p>Click to upload or drag and drop</p>
+                        <span>PNG, JPG, or any image format</span>
+                    </div>
+                    <canvas id="previewCanvas" hidden></canvas>
+                </div>
+
+                <button id="predictBtn" class="btn-primary" disabled>Classify Image</button>
+            </section>
+
+            <section class="results-section" id="resultsSection" hidden>
+                <h2>Classification Results</h2>
+                
+                <div class="result-main">
+                    <div class="result-card highlight">
+                        <h3>Predicted Person</h3>
+                        <div class="result-value" id="predictedLabel">-</div>
+                        <p class="result-description">Person ID (0-based)</p>
+                    </div>
+                    <div class="result-card">
+                        <h3>Group Number</h3>
+                        <div class="result-value" id="predictedGroup">-</div>
+                        <p class="result-description">Person ID (1-based)</p>
+                    </div>
+                    <div class="result-card">
+                        <h3>Confidence</h3>
+                        <div class="result-value" id="confidence">-</div>
+                        <p class="result-description">Maximum probability</p>
+                    </div>
+                </div>
+
+                <div class="probability-section">
+                    <h3>Class Probabilities</h3>
+                    <div class="probability-grid" id="probabilityGrid"></div>
+                </div>
+            </section>
+
+            <section class="status-section">
+                <div id="statusMessage" class="status-message"></div>
+                <div id="loadingIndicator" class="loading" hidden>
+                    <div class="spinner"></div>
+                    <p>Processing image...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Sheffield Face Recognition System | Powered by TensorFlow & scikit-learn</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
